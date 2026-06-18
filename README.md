@@ -1,4 +1,4 @@
-# sportsurge_links
+# sportsurge-ws-links
 
 Scrape all stream server embed URLs from a [Sportsurge](https://sportsurge.ws) watch page and print them as a table, JSON, or CSV.
 
