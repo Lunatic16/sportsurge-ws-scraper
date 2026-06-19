@@ -13,20 +13,37 @@ pip install requests
 ## Usage
 
 ```
-python sportsurge_links.py <watch_url> [--format {table,json,csv}] [--verbose]
+python sportsurge_links.py [<watch_url>] [--format {table,json,csv}] [--verbose]
 ```
 
 ### Arguments
 
 | Argument | Short | Default | Description |
 |---|---|---|---|
-| `watch_url` | — | required | Full Sportsurge `/watch/` URL |
+| `watch_url` | — | optional | Full Sportsurge `/watch/` URL. If omitted, starts interactive sporting event selection from the homepage. |
 | `--format` | `-f` | `table` | Output format: `table`, `json`, or `csv` |
 | `--verbose` | `-v` | off | Print debug info to stderr (redirects, byte count, parsed IDs) |
 
 ## Examples
 
-**Default table output**
+**Interactive Selection (if `watch_url` is omitted)**
+```
+python sportsurge_links.py
+```
+```
+Fetching homepage https://sportsurge.ws/ for active events...
+
+Available Sporting Events:
+  [1] Mexico vs South Korea (FIFA World Cup) - LIVE
+  [2] Athletics vs Los Angeles Angels (MLB) - 23 minutes from now
+  [3] Kansas City Royals vs St. Louis Cardinals (MLB) - LIVE
+
+Select an event (1-3) or press Enter to exit: 1
+Selected: Mexico vs South Korea
+```
+*(Proceeds to print the stream links for the selected event.)*
+
+**Direct URL output**
 ```
 python sportsurge_links.py https://sportsurge.ws/watch/world-championship-gr-b/qatar-canada/363496200
 ```
