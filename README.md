@@ -1,3 +1,6 @@
+<p align="center">
+  ![Project Screenshot](sportsurge.png)
+</p>
 # Sportsurge Stream Embed Scraper (`sportsurge-ws-scraper`)
 
 A resilient, multi-format command-line tool and Python library designed to scrape stream server embed URLs from [Sportsurge](https://sportsurge.ws). It supports direct URL extraction, rotates User-Agents, employs exponential backoff, and features an interactive terminal selector to choose sporting events directly from the Sportsurge homepage.
