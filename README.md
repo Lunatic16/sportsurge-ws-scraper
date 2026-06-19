@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="images/sportsurge.png" alt="Project Screenshot" width="500">
+  <img src="sportsurge.png" alt="Project Screenshot" width="500">
 </p>
 # Sportsurge Stream Embed Scraper (`sportsurge-ws-scraper`)
 
