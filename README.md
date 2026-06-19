@@ -1,5 +1,5 @@
 <p align="center">
-  ![Project Screenshot](sportsurge.png)
+  ![Project Screenshot](files/sportsurge.png)
 </p>
 # Sportsurge Stream Embed Scraper (`sportsurge-ws-scraper`)
 
