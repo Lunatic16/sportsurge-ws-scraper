@@ -238,6 +238,136 @@ class SportsurgeScraper:
 
         return entries
 
+    def get_homepage_events(self, html: str) -> list[dict]:
+        """Parse available sporting events from the homepage HTML."""
+        try:
+            from bs4 import BeautifulSoup
+            soup = BeautifulSoup(html, "html.parser")
+            events = []
+            for a in soup.find_all("a", href=True):
+                href = a["href"]
+                if "/watch/" not in href:
+                    continue
+
+                full_url = urljoin("https://sportsurge.ws", href)
+
+                # Extract teams
+                team_rows = a.find_all(class_="team-name-event-row")
+                teams = []
+                for row in team_rows:
+                    img = row.find("img", alt=True)
+                    if img:
+                        teams.append(img["alt"].strip())
+                    else:
+                        span = row.find("span")
+                        if span:
+                            teams.append(span.get_text().strip())
+                        else:
+                            teams.append(row.get_text().strip())
+
+                # Extract category and status
+                list_divs = a.find_all(class_="ListelemeDuzen")
+                category = ""
+                status = ""
+                for div in list_divs:
+                    text = div.get_text().strip()
+                    if not text:
+                        continue
+                    if div.find("img"):
+                        continue
+                    if not category:
+                        category = text
+                    else:
+                        status = text
+
+                # Fallback/clean title
+                event_title = " vs ".join(teams) if teams else ""
+                chevron_img = a.find("img", alt=True)
+                if chevron_img and chevron_img["alt"].startswith("Watch "):
+                    alt_val = chevron_img["alt"]
+                    if not category and ":" in alt_val:
+                        category = alt_val.split(":", 1)[0].replace("Watch", "").strip()
+                    if not event_title and ":" in alt_val:
+                        event_title = alt_val.split(":", 1)[1].strip()
+
+                if not event_title:
+                    parts = href.split("/")
+                    if len(parts) >= 3:
+                        event_title = parts[-2].replace("-", " ").title()
+
+                events.append({
+                    "title": event_title,
+                    "category": category or "Unknown Sport",
+                    "status": status or "Scheduled",
+                    "url": full_url
+                })
+            return events
+        except Exception as e:
+            self.log.debug("BeautifulSoup parsing failed or not available, falling back to regex: %s", e)
+            return self._parse_homepage_events_regex(html)
+
+    def _parse_homepage_events_regex(self, html: str) -> list[dict]:
+        """Regex-based fallback parser for homepage events."""
+        a_pattern = re.compile(
+            r'<a[^>]+href=[\"\'](https://sportsurge\.ws/watch/[^\'\"]+)[\"\'][^>]*>(.*?)</a>',
+            re.DOTALL
+        )
+        img_alt_pattern = re.compile(r'alt=[\"\']([^\"\']+)[\"\']')
+
+        events = []
+        for href, inner in a_pattern.findall(html):
+            alts = img_alt_pattern.findall(inner)
+            watch_alt = None
+            for alt in alts:
+                if alt.startswith("Watch "):
+                    watch_alt = alt
+                    break
+
+            category = "Unknown Sport"
+            title = ""
+            if watch_alt:
+                content = watch_alt[6:].strip()
+                if ":" in content:
+                    category, title = [part.strip() for part in content.split(":", 1)]
+                else:
+                    title = content
+
+            if not title:
+                teams = [alt for alt in alts if not alt.startswith("Watch") and "chevron" not in alt.lower()]
+                if teams:
+                    title = " vs ".join(teams)
+
+            if not title:
+                parts = href.split("/")
+                if len(parts) >= 3:
+                    title = parts[-2].replace("-", " ").title()
+
+            text_content = re.sub(r"<[^>]+>", " ", inner)
+            text_content = re.sub(r"\s+", " ", text_content).strip()
+
+            status = "Scheduled"
+            if "LIVE" in text_content:
+                status = "LIVE"
+            else:
+                time_match = re.search(r"(\d+\s+(?:minute|hour|day)s?\s+from\s+now)", text_content, re.IGNORECASE)
+                if time_match:
+                    status = time_match.group(1)
+
+            if category == "Unknown Sport":
+                for sport in ["MLB", "WNBA", "NBA", "NFL", "NHL", "Boxing", "MMA", "FIFA World Cup", "UFC"]:
+                    if sport in text_content:
+                        category = sport
+                        break
+
+            events.append({
+                "title": title,
+                "category": category,
+                "status": status,
+                "url": href
+            })
+        return events
+
+
 # ---------------------------------------------------------------------------
 # Output formatters
 # ---------------------------------------------------------------------------
@@ -328,12 +458,18 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Examples:\n"
+            "  python sportsurge_links.py\n"
             "  python sportsurge_links.py https://sportsurge.ws/watch/.../363496200\n"
             "  python sportsurge_links.py <url> --format json\n"
             "  python sportsurge_links.py <url> --format csv -v\n"
         ),
     )
-    p.add_argument("watch_url", help="Full Sportsurge /watch/ URL")
+    p.add_argument(
+        "watch_url",
+        nargs="?",
+        default=None,
+        help="Full Sportsurge /watch/ URL (optional, starts interactive selection if omitted)"
+    )
     p.add_argument(
         "--format", "-f",
         choices=["table", "json", "csv"],
@@ -348,14 +484,60 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
+def select_event_interactively(scraper: SportsurgeScraper) -> str:
+    """Fetch homepage, display sporting events, and prompt user to choose one."""
+    homepage_url = "https://sportsurge.ws/"
+    print(f"Fetching homepage {homepage_url} for active events...", file=sys.stderr)
+    try:
+        html, _ = scraper.fetch(homepage_url)
+    except Exception as e:
+        print(f"Error fetching homepage: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    events = scraper.get_homepage_events(html)
+    if not events:
+        print("No active sporting events found on the homepage.", file=sys.stderr)
+        sys.exit(1)
+
+    print("\nAvailable Sporting Events:", file=sys.stderr)
+    for idx, ev in enumerate(events, 1):
+        print(f"  [{idx}] {ev['title']} ({ev['category']}) - {ev['status']}", file=sys.stderr)
+
+    while True:
+        try:
+            sys.stderr.write(f"\nSelect an event (1-{len(events)}) or press Enter to exit: ")
+            sys.stderr.flush()
+            choice = sys.stdin.readline().strip()
+            if not choice:
+                print("Exit.", file=sys.stderr)
+                sys.exit(0)
+
+            idx = int(choice)
+            if 1 <= idx <= len(events):
+                selected = events[idx - 1]
+                print(f"Selected: {selected['title']}\n", file=sys.stderr)
+                return selected["url"]
+            else:
+                print(f"Please enter a number between 1 and {len(events)}.", file=sys.stderr)
+        except ValueError:
+            print("Invalid input. Please enter a valid number.", file=sys.stderr)
+        except (KeyboardInterrupt, EOFError):
+            print("\nExit.", file=sys.stderr)
+            sys.exit(0)
+
+
 def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
 
     scraper = SportsurgeScraper(verbose=args.verbose)
 
+    watch_url = args.watch_url
+    if not watch_url:
+        watch_url = select_event_interactively(scraper)
+
     try:
-        entries = scraper.get_embed_urls(args.watch_url)
+        entries = scraper.get_embed_urls(watch_url)
     except requests.HTTPError as e:
         print(f"HTTP error fetching page: {e}", file=sys.stderr)
         sys.exit(1)
