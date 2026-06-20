@@ -372,47 +372,75 @@ class SportsurgeScraper:
 # Output formatters
 # ---------------------------------------------------------------------------
 
+def _style(text: str, *codes: str, stream=sys.stdout) -> str:
+    """Wrap text in ANSI codes if the target stream is a TTY."""
+    if not stream.isatty():
+        return text
+    return f"\033[{';'.join(codes)}m{text}\033[0m"
+
 def _colorize(text: str, code: str) -> str:
-    """Wrap text in an ANSI color code if stdout is a TTY."""
-    if sys.stdout.isatty():
-        return f"\033[{code}m{text}\033[0m"
-    return text
+    """Single-code colorizer for stdout (used by the table formatter)."""
+    return _style(text, code, stream=sys.stdout)
+
+def _err(text: str, *codes: str) -> str:
+    """Colorizer for stderr (status/log messages)."""
+    return _style(text, *codes, stream=sys.stderr)
+
+def _status(msg: str) -> None:
+    print(_err(f"➤ {msg}", "36"), file=sys.stderr)
+
+def _success(msg: str) -> None:
+    print(_err(f"✓ {msg}", "1", "32"), file=sys.stderr)
+
+def _error(msg: str) -> None:
+    print(_err(f"✗ {msg}", "1", "31"), file=sys.stderr)
 
 def fmt_table(entries: list[ServerEntry]) -> str:
-    """Colorized table with columns sized to actual content."""
+    """Box-drawn, colorized table with a title banner, sized to actual content."""
     COL_DEFAULT = "Default"
-    DEFAULT_TICK = "✅"
+    TICK = "✓"
 
     # Compute column widths from real data (no hardcoded padding)
     w_label = max(len("Server"), max(len(e.label) for e in entries))
     w_url   = max(len("Stream URL"), max(len(e.url) for e in entries))
-    w_def   = max(len(COL_DEFAULT), len(DEFAULT_TICK))
+    w_def   = max(len(COL_DEFAULT), len(TICK))
 
-    def cell(text: str, width: int) -> str:
-        return f" {text:<{width}} "
+    def cell(text: str, width: int, center: bool = False) -> str:
+        return f" {text:^{width}} " if center else f" {text:<{width}} "
 
-    sep = f"|{'-' * (w_label + 2)}|{'-' * (w_url + 2)}|{'-' * (w_def + 2)}|"
+    top    = f"┌{'─' * (w_label + 2)}┬{'─' * (w_url + 2)}┬{'─' * (w_def + 2)}┐"
+    mid    = f"├{'─' * (w_label + 2)}┼{'─' * (w_url + 2)}┼{'─' * (w_def + 2)}┤"
+    bottom = f"└{'─' * (w_label + 2)}┴{'─' * (w_url + 2)}┴{'─' * (w_def + 2)}┘"
+    inner_width = len(top) - 2
 
-    header = (
-        _colorize(f"|{cell('Server', w_label)}", "1") +
-        _colorize(f"|{cell('Stream URL', w_url)}", "1") +
-        _colorize(f"|{cell(COL_DEFAULT, w_def)}|", "1")
+    banner = (
+        f"╭{'─' * inner_width}╮\n"
+        + _colorize(f"│{' Sportsurge Stream Servers '.center(inner_width)}│", "1;36") + "\n"
+        + f"╰{'─' * inner_width}╯"
     )
 
-    rows = [header, sep]
+    header = (
+        _colorize(f"│{cell('Server', w_label)}", "1;36") +
+        _colorize(f"│{cell('Stream URL', w_url)}", "1;36") +
+        _colorize(f"│{cell(COL_DEFAULT, w_def, center=True)}│", "1;36")
+    )
+
+    rows = [banner, top, header, mid]
     for e in entries:
-        tick       = DEFAULT_TICK if e.is_default else ""
         label_text = cell(e.label, w_label)
-        url_text   = cell(e.url,   w_url)
-        def_text   = cell(tick,    w_def)
+        url_text   = cell(e.url, w_url)
+        def_text   = cell(TICK if e.is_default else "", w_def, center=True)
 
         if e.is_default:
-            label_text = _colorize(label_text, "36")
-            url_text   = _colorize(url_text,   "33")
-            def_text   = _colorize(def_text,   "32")
+            label_text = _colorize(label_text, "1;36")
+            url_text   = _colorize(url_text, "33")
+            def_text   = _colorize(def_text, "1;32")
+        else:
+            url_text = _colorize(url_text, "2")
 
-        rows.append(f"|{label_text}|{url_text}|{def_text}|")
+        rows.append(f"│{label_text}│{url_text}│{def_text}│")
 
+    rows.append(bottom)
     return "\n".join(rows)
 
 def fmt_json(entries: list[ServerEntry]) -> str:
@@ -484,45 +512,71 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
+def _print_event_menu(events: list[dict]) -> None:
+    """Render homepage events grouped by category, numbered for selection."""
+    print(_err(f"\n── Available Sporting Events ({len(events)}) ──", "1;36"), file=sys.stderr)
+
+    groups: dict[str, list[tuple[int, dict]]] = {}
+    order: list[str] = []
+    for idx, ev in enumerate(events, 1):
+        cat = ev["category"]
+        if cat not in groups:
+            groups[cat] = []
+            order.append(cat)
+        groups[cat].append((idx, ev))
+
+    for cat in order:
+        print(_err(f"\n  {cat}", "1;35"), file=sys.stderr)
+        for idx, ev in groups[cat]:
+            status = ev["status"]
+            if status.strip().upper() == "LIVE":
+                badge = _err("● LIVE", "1;31")
+            else:
+                badge = _err(f"⏱ {status}", "33")
+            num = _err(f"[{idx:>2}]", "2")
+            print(f"    {num} {ev['title']:<40} {badge}", file=sys.stderr)
+
+
 def select_event_interactively(scraper: SportsurgeScraper) -> str:
     """Fetch homepage, display sporting events, and prompt user to choose one."""
     homepage_url = "https://sportsurge.ws/"
-    print(f"Fetching homepage {homepage_url} for active events...", file=sys.stderr)
+    _status(f"Fetching {homepage_url} for active events…")
     try:
         html, _ = scraper.fetch(homepage_url)
     except Exception as e:
-        print(f"Error fetching homepage: {e}", file=sys.stderr)
+        _error(f"Error fetching homepage: {e}")
         sys.exit(1)
 
     events = scraper.get_homepage_events(html)
     if not events:
-        print("No active sporting events found on the homepage.", file=sys.stderr)
+        _error("No active sporting events found on the homepage.")
         sys.exit(1)
 
-    print("\nAvailable Sporting Events:", file=sys.stderr)
-    for idx, ev in enumerate(events, 1):
-        print(f"  [{idx}] {ev['title']} ({ev['category']}) - {ev['status']}", file=sys.stderr)
+    _print_event_menu(events)
 
     while True:
         try:
-            sys.stderr.write(f"\nSelect an event (1-{len(events)}) or press Enter to exit: ")
+            prompt = _err(f"\nSelect an event (1-{len(events)}) or press Enter to exit: ", "1")
+            sys.stderr.write(prompt)
             sys.stderr.flush()
             choice = sys.stdin.readline().strip()
             if not choice:
-                print("Exit.", file=sys.stderr)
+                _status("Exit.")
                 sys.exit(0)
 
             idx = int(choice)
             if 1 <= idx <= len(events):
                 selected = events[idx - 1]
-                print(f"Selected: {selected['title']}\n", file=sys.stderr)
+                _success(f"Selected: {selected['title']}")
+                print(file=sys.stderr)
                 return selected["url"]
             else:
-                print(f"Please enter a number between 1 and {len(events)}.", file=sys.stderr)
+                _error(f"Please enter a number between 1 and {len(events)}.")
         except ValueError:
-            print("Invalid input. Please enter a valid number.", file=sys.stderr)
+            _error("Invalid input. Please enter a valid number.")
         except (KeyboardInterrupt, EOFError):
-            print("\nExit.", file=sys.stderr)
+            print(file=sys.stderr)
+            _status("Exit.")
             sys.exit(0)
 
 
@@ -536,20 +590,27 @@ def main() -> None:
     if not watch_url:
         watch_url = select_event_interactively(scraper)
 
+    _status(f"Fetching {watch_url}")
     try:
         entries = scraper.get_embed_urls(watch_url)
     except requests.HTTPError as e:
-        print(f"HTTP error fetching page: {e}", file=sys.stderr)
+        _error(f"HTTP error fetching page: {e}")
         sys.exit(1)
     except requests.ConnectionError as e:
-        print(f"Connection error: {e}", file=sys.stderr)
+        _error(f"Connection error: {e}")
         sys.exit(1)
     except requests.Timeout:
-        print(f"Request timed out after {TIMEOUT}s.", file=sys.stderr)
+        _error(f"Request timed out after {TIMEOUT}s.")
         sys.exit(1)
     except RuntimeError as e:
-        print(f"Parse error: {e}", file=sys.stderr)
+        _error(f"Parse error: {e}")
         sys.exit(1)
+
+    default_entry = next((e for e in entries if e.is_default), None)
+    summary = f"Found {len(entries)} server{'s' if len(entries) != 1 else ''}"
+    if default_entry:
+        summary += f" — default: {default_entry.label}"
+    _success(summary)
 
     formatter = FORMATTERS[args.format]
     print(formatter(entries))
