@@ -39,9 +39,10 @@ A resilient, multi-format command-line tool and Python library designed to scrap
 
 ## Key Features
 
-- **Interactive Event Selector**: Run the script without arguments to automatically pull the homepage and select active/upcoming live sports.
+- **Interactive Event Selector**: Run the script without arguments to automatically pull the homepage and select active/upcoming live sports, grouped by category with color-coded `● LIVE` / `⏱ scheduled` badges.
 - **Direct Link Retrieval**: Provide a specific `/watch/` URL to immediately get its stream server embed URLs.
-- **Multiple Output Formats**: Supports clean, human-readable colorized ANSI tables, structured JSON payload, or pipe-friendly CSV.
+- **Multiple Output Formats**: Supports a clean, box-drawn, colorized ANSI table (with the default server highlighted), structured JSON payload, or pipe-friendly CSV.
+- **Status Messaging**: Fetch progress, success summaries, and errors are printed to `stderr` with consistent `➤` / `✓` / `✗` markers so they're easy to scan and never pollute piped `stdout`.
 - **Resilience Engine**: Rotates through four realistic User-Agents, automatically retries on rates and transient server errors, and falls back to regex-based HTML parsers if BeautifulSoup is unavailable.
 - **Library Integration**: Designed as a modular Python class (`SportsurgeScraper`) that can be imported directly into other scripts.
 
@@ -126,23 +127,39 @@ python3 sportsurge_links.py
 
 **Interactive CLI Example:**
 ```
-Fetching homepage https://sportsurge.../ for active events...
+➤ Fetching https://sportsurge.../ for active events…
 
-Available Sporting Events:
-  [1] Mexico vs South Korea (FIFA World Cup) - LIVE
-  [2] Athletics vs Los Angeles Angels (MLB) - 23 minutes from now
-  [3] Kansas City Royals vs St. Louis Cardinals (MLB) - LIVE
-  [4] Indiana Fever vs Atlanta Dream (WNBA) - LIVE
+── Available Sporting Events (4) ──
+
+  FIFA World Cup
+    [ 1] Mexico vs South Korea                      ● LIVE
+
+  MLB
+    [ 2] Athletics vs Los Angeles Angels             ⏱ 23 minutes from now
+    [ 3] Kansas City Royals vs St. Louis Cardinals   ● LIVE
+
+  WNBA
+    [ 4] Indiana Fever vs Atlanta Dream              ● LIVE
 
 Select an event (1-4) or press Enter to exit: 1
-Selected: Mexico vs South Korea
+✓ Selected: Mexico vs South Korea
 
-| Server  | Stream URL                                       | Default |
-|---------|--------------------------------------------------|---------|
-| Server1 | https://gooz.aapmains.../.../52203               | ✅      |
-| Server2 | https://gooz.aapmains.../.../52204               |         |
-| Server3 | https://gooz.aapmains.../.../52205               |         |
+➤ Fetching https://sportsurge.../watch/mexico-vs-south-korea/.../52203
+✓ Found 3 servers — default: Server1
+
+╭───────────────────────────────────────────────────────────────╮
+│                  Sportsurge Stream Servers                    │
+╰───────────────────────────────────────────────────────────────╯
+┌─────────┬───────────────────────────────────────────┬─────────┐
+│ Server  │ Stream URL                                │ Default │
+├─────────┼───────────────────────────────────────────┼─────────┤
+│ Server1 │ https://gooz.aapmains.../.../52203        │    ✓    │
+│ Server2 │ https://gooz.aapmains.../.../52204        │         │
+│ Server3 │ https://gooz.aapmains.../.../52205        │         │
+└─────────┴───────────────────────────────────────────┴─────────┘
 ```
+
+*Events are grouped by category (league/competition) in the order they're first encountered. `● LIVE` badges render in red and `⏱` time badges in yellow when your terminal supports ANSI colors; the table's default-server row is highlighted in cyan/green.*
 
 *Note: The interactive prompt and debug notices are output to `sys.stderr`, preserving clean standard output for filters like `grep` or `jq`.*
 
@@ -159,6 +176,28 @@ python3 sportsurge_links.py https://sportsurge.../watch/world-championship-gr-b/
 ---
 
 ### Output Formats
+
+#### Table Output (default)
+The default, human-friendly format — a box-drawn, colorized table with a title banner. The row matching the page's default-loaded stream is highlighted (cyan label, yellow URL, green ✓).
+
+```bash
+python3 sportsurge_links.py <url>
+# or explicitly
+python3 sportsurge_links.py <url> --format table
+```
+```
+╭───────────────────────────────────────────────────────────────╮
+│                  Sportsurge Stream Servers                    │
+╰───────────────────────────────────────────────────────────────╯
+┌─────────┬───────────────────────────────────────────┬─────────┐
+│ Server  │ Stream URL                                │ Default │
+├─────────┼───────────────────────────────────────────┼─────────┤
+│ Server1 │ https://gooz.aapmains.../.../52203        │    ✓    │
+│ Server2 │ https://gooz.aapmains.../.../52204        │         │
+└─────────┴───────────────────────────────────────────┴─────────┘
+```
+
+Colors are auto-disabled when output isn't a terminal (e.g. piped or redirected), so the box-drawing characters still render cleanly in files or pagers.
 
 #### JSON Output
 Perfect for automated pipelines and custom scripting.
@@ -332,8 +371,8 @@ python3 sportsurge_links.py -f csv
 * **Solution**: Sportsurge may have changed their layout or anti-bot mechanisms. Enable verbose output (`-v`) to check the exact URL and body size received by the script.
 
 ### Terminal Formatting / ANSI Colors
-* **Problem**: Table rows contain messy escape characters like `\033[36m`.
-* **Solution**: Ensure your shell supports ANSI colors. If piping to files, colors are automatically stripped by `sys.stdout.isatty()`.
+* **Problem**: Table rows or status lines contain messy escape characters like `\033[36m`.
+* **Solution**: Ensure your shell supports ANSI colors. Coloring is applied independently to `stdout` (the table) and `stderr` (status, errors, and the interactive menu), each checked via `isatty()` — so colors are automatically stripped on either stream when it isn't a real terminal, e.g. when piping the table to a file or redirecting `stderr` to a log.
 
 ---
 
