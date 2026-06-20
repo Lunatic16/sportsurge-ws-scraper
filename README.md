@@ -129,7 +129,7 @@ python3 sportsurge_links.py
 
 **Interactive CLI Example:**
 ```
-➤ Fetching https://sportsurge.ws/ for active events…
+➤ Fetching https://sportsurge.../ for active events…
 
 ── Available Sporting Events (5) ──
 
