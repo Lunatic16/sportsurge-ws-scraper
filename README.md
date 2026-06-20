@@ -32,6 +32,7 @@ A resilient, multi-format command-line tool and Python library designed to scrap
 9. [Troubleshooting](#troubleshooting)
    - [HTTP Errors (429/503)](#http-errors-429503)
    - [Missing Server Entries / Suspiciously Small Pages](#missing-server-entries--suspiciously-small-pages)
+   - [Only One Server Shows Up](#only-one-server-shows-up)
    - [Terminal Formatting / ANSI Colors](#terminal-formatting--ansi-colors)
 10. [License](#license)
 
@@ -39,9 +40,10 @@ A resilient, multi-format command-line tool and Python library designed to scrap
 
 ## Key Features
 
-- **Interactive Event Selector**: Run the script without arguments to automatically pull the homepage and select active/upcoming live sports, grouped by category with color-coded `● LIVE` / `⏱ scheduled` badges.
-- **Direct Link Retrieval**: Provide a specific `/watch/` URL to immediately get its stream server embed URLs.
+- **Interactive Event Selector**: Run the script without arguments to automatically pull the homepage and select active/upcoming live sports, grouped by category with color-coded `● LIVE` / `⏱ scheduled` badges. Covers both team-sport matches (`/watch/` URLs — MLB, NBA, NHL, FIFA World Cup, WNBA, NCAA, etc.) and single-card fight sports (`/event/` URLs — UFC, Boxing, MMA, WWE).
+- **Direct Link Retrieval**: Provide a specific Sportsurge `/watch/` or `/event/` URL to immediately get its stream server embed URL(s).
 - **Multiple Output Formats**: Supports a clean, box-drawn, colorized ANSI table (with the default server highlighted), structured JSON payload, or pipe-friendly CSV.
+- **Single & Multi-Server Pages**: Most `/watch/` pages expose several alternate servers via stream-switch buttons; many `/event/` fight-card pages only embed a single iframe. The scraper handles both — synthesizing a lone `Server1` entry when no alternate-server buttons exist.
 - **Status Messaging**: Fetch progress, success summaries, and errors are printed to `stderr` with consistent `➤` / `✓` / `✗` markers so they're easy to scan and never pollute piped `stdout`.
 - **Resilience Engine**: Rotates through four realistic User-Agents, automatically retries on rates and transient server errors, and falls back to regex-based HTML parsers if BeautifulSoup is unavailable.
 - **Library Integration**: Designed as a modular Python class (`SportsurgeScraper`) that can be imported directly into other scripts.
@@ -127,21 +129,24 @@ python3 sportsurge_links.py
 
 **Interactive CLI Example:**
 ```
-➤ Fetching https://sportsurge.../ for active events…
+➤ Fetching https://sportsurge.ws/ for active events…
 
-── Available Sporting Events (4) ──
+── Available Sporting Events (5) ──
+
+  UFC
+    [ 1] UFC Fight Night: Kape vs. Horiguchi          ⏱ 31 minutes from now
 
   FIFA World Cup
-    [ 1] Mexico vs South Korea                      ● LIVE
+    [ 2] Mexico vs South Korea                        ● LIVE
 
   MLB
-    [ 2] Athletics vs Los Angeles Angels             ⏱ 23 minutes from now
-    [ 3] Kansas City Royals vs St. Louis Cardinals   ● LIVE
+    [ 3] Athletics vs Los Angeles Angels               ⏱ 23 minutes from now
+    [ 4] Kansas City Royals vs St. Louis Cardinals     ● LIVE
 
   WNBA
-    [ 4] Indiana Fever vs Atlanta Dream              ● LIVE
+    [ 5] Indiana Fever vs Atlanta Dream                ● LIVE
 
-Select an event (1-4) or press Enter to exit: 1
+Select an event (1-5) or press Enter to exit: 2
 ✓ Selected: Mexico vs South Korea
 
 ➤ Fetching https://sportsurge.../watch/mexico-vs-south-korea/.../52203
@@ -151,15 +156,17 @@ Select an event (1-4) or press Enter to exit: 1
 │                  Sportsurge Stream Servers                    │
 ╰───────────────────────────────────────────────────────────────╯
 ┌─────────┬───────────────────────────────────────────┬─────────┐
-│ Server  │ Stream URL                                │ Default │
+│ Server  │ Stream URL                                 │ Default │
 ├─────────┼───────────────────────────────────────────┼─────────┤
-│ Server1 │ https://gooz.aapmains.../.../52203        │    ✓    │
-│ Server2 │ https://gooz.aapmains.../.../52204        │         │
-│ Server3 │ https://gooz.aapmains.../.../52205        │         │
+│ Server1 │ https://gooz.aapmains.../.../52203         │    ✓    │
+│ Server2 │ https://gooz.aapmains.../.../52204         │         │
+│ Server3 │ https://gooz.aapmains.../.../52205         │         │
 └─────────┴───────────────────────────────────────────┴─────────┘
 ```
 
-*Events are grouped by category (league/competition) in the order they're first encountered. `● LIVE` badges render in red and `⏱` time badges in yellow when your terminal supports ANSI colors; the table's default-server row is highlighted in cyan/green.*
+*Events are grouped by category (league/competition) in the order they're first encountered — including single-card fight sports like UFC and Boxing, which Sportsurge links via `/event/` URLs rather than `/watch/`. `● LIVE` badges render in red and `⏱` time badges in yellow when your terminal supports ANSI colors; the table's default-server row is highlighted in cyan/green.*
+
+*Note: many `/event/` fight-card pages (e.g. a single UFC bout) only embed one iframe and have no alternate-server buttons. In that case the table will simply show a single `Server1` row marked as default — that's expected, not an error.*
 
 *Note: The interactive prompt and debug notices are output to `sys.stderr`, preserving clean standard output for filters like `grep` or `jq`.*
 
@@ -167,10 +174,13 @@ Select an event (1-4) or press Enter to exit: 1
 
 ### Direct URL Extraction
 
-If you already have a Sportsurge `/watch/` URL, supply it directly:
+If you already have a Sportsurge `/watch/` or `/event/` URL, supply it directly:
 
 ```bash
 python3 sportsurge_links.py https://sportsurge.../watch/world-championship-gr-b/.../363496200
+
+# Single-card fight pages (UFC, Boxing, MMA, WWE) work too:
+python3 sportsurge_links.py https://sportsurge.../event/boxing/ryan-garner-vs-michael-magnesi-live-streaming-links
 ```
 
 ---
@@ -190,10 +200,10 @@ python3 sportsurge_links.py <url> --format table
 │                  Sportsurge Stream Servers                    │
 ╰───────────────────────────────────────────────────────────────╯
 ┌─────────┬───────────────────────────────────────────┬─────────┐
-│ Server  │ Stream URL                                │ Default │
+│ Server  │ Stream URL                                 │ Default │
 ├─────────┼───────────────────────────────────────────┼─────────┤
-│ Server1 │ https://gooz.aapmains.../.../52203        │    ✓    │
-│ Server2 │ https://gooz.aapmains.../.../52204        │         │
+│ Server1 │ https://gooz.aapmains.../.../52203         │    ✓    │
+│ Server2 │ https://gooz.aapmains.../.../52204         │         │
 └─────────┴───────────────────────────────────────────┴─────────┘
 ```
 
@@ -322,14 +332,14 @@ User CLI Invocation
 ### Scraping and Parsing Logic
 
 1. **Watch Page Fetching**: Fetches the page using randomized Headers (`User-Agent`) and tracks any HTTP redirects to support domain mirrors.
-2. **Interactive Event Parser**: Matches links (`/watch/`) on the homepage. It identifies the teams/players, the league or sporting category, and the status ("LIVE" or timed duration) by inspecting element attributes and textual classes.
+2. **Interactive Event Parser**: Matches links on the homepage against two URL patterns — `/watch/<competition>/<teams>/<id>` for team-sport matches, and `/event/<sport>/<slug>` for single-card fight sports (UFC, Boxing, MMA, WWE). It identifies the teams/players, the league or sporting category, and the status ("LIVE" or timed duration) by inspecting element attributes and textual classes, with a keyword-matching fallback (and a boilerplate-stripped URL-slug fallback) if those attributes are missing or laid out differently.
 3. **Embed Stream Disovery**: Extracts the active stream source URL by trying a sequence of fallback iframe/JS regex patterns:
    - `src="..."` attributes on `<iframe>`
    - `data-src="..."` lazy attributes
    - JS definitions (`embedUrl = '...'`)
    - Object configurations (`src: '...embed...'`)
 4. **Base Stripping**: The scraper strips the active stream ID from the source URL to determine the base domain (e.g., `https://gooz.aapmains.net/new-stream-embed/`).
-5. **Server Extraction**: Locates all stream button elements matching `onclick="window.changeStream(<id>)"` to map other stream options.
+5. **Server Extraction**: Locates all stream button elements matching `onclick="window.changeStream(<id>)"` to map other stream options. Some pages (notably single-fight `/event/` cards) have no such buttons — just one embedded iframe — in which case that iframe is treated as a lone `Server1` entry instead of triggering a parse error.
 6. **Reconstruction**: Re-joins the stream base URL with each identified stream ID to generate the full player link for every host.
 
 ---
@@ -368,7 +378,11 @@ python3 sportsurge_links.py -f csv
 
 ### Missing Server Entries / Suspiciously Small Pages
 * **Problem**: The output warns of parsing failures or lists `Page response is suspiciously small`.
-* **Solution**: Sportsurge may have changed their layout or anti-bot mechanisms. Enable verbose output (`-v`) to check the exact URL and body size received by the script.
+* **Solution**: This only triggers when *neither* alternate-server buttons *nor* an embedded iframe can be found at all — Sportsurge may have changed their layout or anti-bot mechanisms. Enable verbose output (`-v`) to check the exact URL and body size received by the script.
+
+### Only One Server Shows Up
+* **Problem**: A page (often a single-card `/event/` fight page like UFC or Boxing) only returns one `Server1` row in the table, even though other pages show three or four.
+* **Solution**: This is expected, not a bug — some pages embed a single iframe with no alternate-stream buttons at all, so there's nothing else to list.
 
 ### Terminal Formatting / ANSI Colors
 * **Problem**: Table rows or status lines contain messy escape characters like `\033[36m`.
