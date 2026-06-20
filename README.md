@@ -4,7 +4,7 @@
 
 # Sportsurge Stream Embed Scraper
 
-A resilient, multi-format command-line tool and Python library designed to scrape stream server embed URLs from [Sportsurge](https://sportsurge.ws). It supports direct URL extraction, rotates User-Agents, employs exponential backoff, and features an interactive terminal selector to choose sporting events directly from the Sportsurge homepage.
+A resilient, multi-format command-line tool and Python library designed to scrape stream server embed URLs from Sportsurge. It supports direct URL extraction, rotates User-Agents, employs exponential backoff, and features an interactive terminal selector to choose sporting events directly from the Sportsurge homepage.
 
 ## Table of Contents
 1. [Key Features](#key-features)
@@ -126,7 +126,7 @@ python3 sportsurge_links.py
 
 **Interactive CLI Example:**
 ```
-Fetching homepage https://sportsurge.ws/ for active events...
+Fetching homepage https://sportsurge.../ for active events...
 
 Available Sporting Events:
   [1] Mexico vs South Korea (FIFA World Cup) - LIVE
@@ -139,9 +139,9 @@ Selected: Mexico vs South Korea
 
 | Server  | Stream URL                                       | Default |
 |---------|--------------------------------------------------|---------|
-| Server1 | https://gooz.aapmains.net/new-stream-embed/52203 | ✅      |
-| Server2 | https://gooz.aapmains.net/new-stream-embed/52204 |         |
-| Server3 | https://gooz.aapmains.net/new-stream-embed/52205 |         |
+| Server1 | https://gooz.aapmains.../.../52203               | ✅      |
+| Server2 | https://gooz.aapmains.../.../52204               |         |
+| Server3 | https://gooz.aapmains.../.../52205               |         |
 ```
 
 *Note: The interactive prompt and debug notices are output to `sys.stderr`, preserving clean standard output for filters like `grep` or `jq`.*
@@ -153,7 +153,7 @@ Selected: Mexico vs South Korea
 If you already have a Sportsurge `/watch/` URL, supply it directly:
 
 ```bash
-python3 sportsurge_links.py https://sportsurge.ws/watch/world-championship-gr-b/qatar-canada/363496200
+python3 sportsurge_links.py https://sportsurge.../watch/world-championship-gr-b/.../363496200
 ```
 
 ---
@@ -171,13 +171,13 @@ python3 sportsurge_links.py <url> --format json
   {
     "label": "Server1",
     "stream_id": "52203",
-    "url": "https://gooz.aapmains.net/new-stream-embed/52203",
+    "url": "https://gooz.aapmains.../.../52203",
     "default": true
   },
   {
     "label": "Server2",
     "stream_id": "52204",
-    "url": "https://gooz.aapmains.net/new-stream-embed/52204",
+    "url": "https://gooz.aapmains.../.../52204",
     "default": false
   }
 ]
@@ -191,8 +191,8 @@ python3 sportsurge_links.py <url> --format csv > streams.csv
 ```
 ```
 label,stream_id,url,default
-Server1,52203,https://gooz.aapmains.net/new-stream-embed/52203,True
-Server2,52204,https://gooz.aapmains.net/new-stream-embed/52204,False
+Server1,52203,https://gooz.aapmains.../.../52203,True
+Server2,52204,https://gooz.aapmains.../.../52204,False
 ```
 
 ---
@@ -210,7 +210,7 @@ from sportsurge_links import SportsurgeScraper
 scraper = SportsurgeScraper(verbose=True)
 
 # Fetch watch page directly and get all stream server entries
-watch_url = "https://sportsurge.ws/watch/world-championship-gr-b/qatar-canada/363496200"
+watch_url = "https://sportsurge.../watch/world-championship-gr-b/.../363496200"
 entries = scraper.get_embed_urls(watch_url)
 
 for entry in entries:
