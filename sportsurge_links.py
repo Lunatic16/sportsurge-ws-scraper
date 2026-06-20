@@ -70,6 +70,31 @@ SERVER_PATTERN = re.compile(
     re.DOTALL,
 )
 
+# Boilerplate suffixes Sportsurge appends to /event/ slugs that aren't part
+# of the actual event name (e.g. "...-live-streaming-links")
+_SLUG_JUNK_SUFFIXES = ("-live-streaming-links", "-streaming-links", "-live-stream")
+
+def _slug_to_title(slug: str) -> str:
+    """Convert a URL slug into a readable title, stripping known boilerplate suffixes."""
+    for suffix in _SLUG_JUNK_SUFFIXES:
+        if slug.endswith(suffix):
+            slug = slug[: -len(suffix)]
+            break
+    return slug.replace("-", " ").title()
+
+def _title_slug_from_href(href: str) -> str:
+    """
+    Pick the most descriptive path segment for the title fallback.
+    /watch/.../<teams-slug>/<numeric-id>  -> the teams slug is second-to-last
+    /event/<sport>/<descriptive-slug>     -> the descriptive slug is last (no numeric id)
+    """
+    parts = [p for p in href.split("/") if p]
+    if not parts:
+        return ""
+    if parts[-1].isdigit() and len(parts) >= 2:
+        return parts[-2]
+    return parts[-1]
+
 # ---------------------------------------------------------------------------
 # Data model
 # ---------------------------------------------------------------------------
@@ -246,7 +271,7 @@ class SportsurgeScraper:
             events = []
             for a in soup.find_all("a", href=True):
                 href = a["href"]
-                if "/watch/" not in href:
+                if "/watch/" not in href and "/event/" not in href:
                     continue
 
                 full_url = urljoin("https://sportsurge.ws", href)
@@ -291,9 +316,17 @@ class SportsurgeScraper:
                         event_title = alt_val.split(":", 1)[1].strip()
 
                 if not event_title:
-                    parts = href.split("/")
-                    if len(parts) >= 3:
-                        event_title = parts[-2].replace("-", " ").title()
+                    slug = _title_slug_from_href(href)
+                    if slug:
+                        event_title = _slug_to_title(slug)
+
+                if not category:
+                    link_text = a.get_text(" ", strip=True)
+                    for sport in ["MLB", "WNBA", "NBA", "NFL", "NHL", "Boxing", "MMA",
+                                  "FIFA World Cup", "UFC", "WWE", "NCAA"]:
+                        if sport in link_text:
+                            category = sport
+                            break
 
                 events.append({
                     "title": event_title,
@@ -309,7 +342,7 @@ class SportsurgeScraper:
     def _parse_homepage_events_regex(self, html: str) -> list[dict]:
         """Regex-based fallback parser for homepage events."""
         a_pattern = re.compile(
-            r'<a[^>]+href=[\"\'](https://sportsurge\.ws/watch/[^\'\"]+)[\"\'][^>]*>(.*?)</a>',
+            r'<a[^>]+href=[\"\'](https://sportsurge\.ws/(?:watch|event)/[^\'\"]+)[\"\'][^>]*>(.*?)</a>',
             re.DOTALL
         )
         img_alt_pattern = re.compile(r'alt=[\"\']([^\"\']+)[\"\']')
@@ -338,9 +371,9 @@ class SportsurgeScraper:
                     title = " vs ".join(teams)
 
             if not title:
-                parts = href.split("/")
-                if len(parts) >= 3:
-                    title = parts[-2].replace("-", " ").title()
+                slug = _title_slug_from_href(href)
+                if slug:
+                    title = _slug_to_title(slug)
 
             text_content = re.sub(r"<[^>]+>", " ", inner)
             text_content = re.sub(r"\s+", " ", text_content).strip()
@@ -354,7 +387,8 @@ class SportsurgeScraper:
                     status = time_match.group(1)
 
             if category == "Unknown Sport":
-                for sport in ["MLB", "WNBA", "NBA", "NFL", "NHL", "Boxing", "MMA", "FIFA World Cup", "UFC"]:
+                for sport in ["MLB", "WNBA", "NBA", "NFL", "NHL", "Boxing", "MMA",
+                              "FIFA World Cup", "UFC", "WWE", "NCAA"]:
                     if sport in text_content:
                         category = sport
                         break
