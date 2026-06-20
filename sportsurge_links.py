@@ -229,26 +229,33 @@ class SportsurgeScraper:
         """
         html, final_url = self.fetch(watch_url)
 
-        servers = self.parse_servers(html)
-        if not servers:
-            # Check if it looks like we got a valid page at all
-            if len(html) < 500:
-                raise RuntimeError(
-                    "Page response is suspiciously small — may be blocked or redirected to an error page."
-                )
-            raise RuntimeError(
-                "No server entries found. The page may be JS-rendered (stream IDs injected "
-                "after load) or the URL may be invalid."
-            )
-
         base_url = self.parse_base_url(html)
+        default_id = self.parse_default_id(html)
+        servers = self.parse_servers(html)
+
+        if not servers:
+            if not base_url or not default_id:
+                # Check if it looks like we got a valid page at all
+                if len(html) < 500:
+                    raise RuntimeError(
+                        "Page response is suspiciously small — may be blocked or redirected to an error page."
+                    )
+                raise RuntimeError(
+                    "No server entries found and no iframe/embed URL could be located. "
+                    "The page may be JS-rendered (content injected after load) or the URL may be invalid."
+                )
+            # Some pages (e.g. single-fight /event/ cards) only have one embedded
+            # iframe and no alternate-server buttons — treat that iframe as the
+            # sole server rather than erroring out.
+            self.log.debug("No server buttons found; using the single embedded iframe as Server1.")
+            servers = [("Server1", default_id)]
+
         if not base_url:
             raise RuntimeError(
                 "Could not locate an iframe/embed URL in the page source. "
                 "The site may use JS-injected embeds not visible in raw HTML."
             )
 
-        default_id = self.parse_default_id(html)
         self.log.debug("Default stream ID: %s", default_id)
 
         entries = []
